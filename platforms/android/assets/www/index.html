@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Speech Recognition plugin demo</title>
+        <script type="text/javascript" src="cordova.js"></script>
+        <script type="text/javascript" charset="utf-8" src="tts.js"></script>
+    </head>
+    <body>
+
+        <script type="text/javascript">
+            var nombre;
+            var productList = ['1 cafe', '2 docenas de facturas', 'pague y no joda'];
+
+            function onDeviceReady(){
+                console.log("Device is ready");
+                
+                try{
+                    navigator.tts.startup(initVoice, null);
+                } catch(e){alert(e);}
+            }
+
+            function initVoice(){
+                navigator.tts.setLanguage('es');
+                navigator.tts.speed(180);
+                navigator.tts.pitch(90);
+
+                askForName(function(){buscar(0);});
+            }
+
+            function buscar(itemOrder){
+                if (itemOrder >= productList.length){
+                    navigator.tts.speak('Fin de la busqueda, gracias Nacho');
+                    return false;
+                }
+
+                ask('Busque: ' + productList[itemOrder] + ', ¿cuanto espero?',  
+                        function(result){
+                            // responde por tiempo de espera
+                            try{
+                            var xisAnswered = false;
+
+                            var j = 0;
+                            while(!xisAnswered &&  j < result.length){
+                                xisAnswered = result[j] == "repita" || result[j] == "Repita";
+                                j++;
+                            }
+                            
+                            
+                            if (xisAnswered){
+                                buscar(itemOrder);
+                                return false;
+                            }
+
+                            var isAnswered = false;
+
+                            var i = 0;
+                            while(!isAnswered &&  i < result.length){
+                                isAnswered = typeof result[i] == 'number' || result[i].match(/\d+/);
+                                i++;
+                            }
+                            
+                            var answer;
+                            if (isAnswered)
+                                answer = parseInt(result[i-1].match(/\d+/)[0]);
+                            else
+                                answer = 10;
+
+                            answer = answer > 60 ? 60 : answer;
+                            askAfter(answer, function(){
+                                    try{
+                                        askItemsQuantity(itemOrder);
+                                    }catch(e){
+                                        buscar(itemOrder);
+                                    }
+                                });
+                            }catch(e){ alert('error en buscar: ' + e.toString()); }
+                        }, function() {alert('error en rta');  buscar(itemOrder); });
+            }
+
+            function askAfter(timeInMilliseconds, action){
+                navigator.tts.speak('Te pregunto en ' + timeInMilliseconds + ' segundos', function(){
+                                setTimeout( action, timeInMilliseconds * 1000 );
+                            }); 
+            }
+
+            function askItemsQuantity(itemOrder){
+                ask('Cuantos encontraste?', 
+                    function(itemQuantity) { 
+                        askForConfirmation('Entendi: ' + itemQuantity[0].toString(), 
+                            function() { buscar(itemOrder+1); },  
+                            function() { buscar(itemOrder); }); }, 
+                    function() { buscar(itemOrder); });
+            }
+
+            function recognizeSpeech() {
+                var maxMatches = 5;
+                var promptString = "Hable fuerte y claro"; // optional
+                var language = "es-ES";                     // optional
+                window.plugins.speechrecognizer.startRecognize(function(result){
+                    var answer = result[0];
+                    askForConfirmation('Escuche: ' + answer.toString());
+
+                }, function(errorMessage){
+                    console.log("Error message: " + errorMessage);
+                }, maxMatches, promptString, language);
+            }
+
+            function askForConfirmation(aTextForConfirmation, onSuccess, onFail){
+                if (!onSuccess)
+                    onSuccess = navigator.tts.speak('Bien!');
+                if (!onFail)
+                    onFail = askForConfirmation('Perdona ' + nombre + ', no te oi bien. ' + aTextForConfirmation, onSuccess);
+                try{
+                    ask(aTextForConfirmation + ' Está bien?', function(result){
+                            var answer = false;
+                            var i = 0;
+                            while(!answer &&  i < result.length){
+                                answer = result[i] == 'si' || result[i] == 'Si';
+                                i++;
+                            }
+
+                            answer ? onSuccess() :  onFail();
+                        }, function(){ askForConfirmation(aTextForConfirmation, onSuccess, onFail);});
+                }catch(e){alert('askForName Error: ' + e.toString());}
+            }
+
+            function askForName(onSuccess){
+                try{
+                    
+                    ask('Bienvenido, Como te llamas?', 
+                        function(result){
+                            var answer = result[0];
+                            navigator.tts.speak('Hola, ' + answer, onSuccess);
+                            nombre = answer;
+                        }, function(e){
+                            askForName(onSuccess);
+                    });
+                }catch(e){
+                    alert('askForName Error: ' + e.toString());
+                }
+            }
+
+            function ask(question, onAnswerSuccess, onAnswerFail, onErrorInQuestion){
+                if (!onErrorInQuestion){
+                    onErrorInQuestion = function() { alert('error en la pregunta'); };
+                }
+
+                navigator.tts.speak(question, 
+                    function(){
+                        listen(onAnswerSuccess, onAnswerFail);
+                }, onErrorInQuestion);
+            }
+
+            function listen(onSuccess, onFail){
+                if (!onFail){
+                    onFail = function() { 
+                        console.log("Error message: " + errorMessage);
+                        alert("Error message: " + errorMessage);
+                    };
+                }
+
+                try{
+                    var maxMatches = 5;
+                    var promptString = "Hable fuerte y claro"; // optional
+                    var language = "es-ES";                     // optional
+
+                    window.plugins.speechrecognizer.startRecognize(onSuccess, onFail, maxMatches, promptString, language);   
+                }
+                catch(e){
+                    alert('listen' + e.toString());
+                }
+            }
+
+            // Show the list of the supported languages
+            function getSupportedLanguages() {
+                window.plugins.speechrecognizer.getSupportedLanguages(function(languages){
+                    // display the json array
+                    alert(languages);
+                }, function(error){
+                    alert("Could not retrieve the supported languages : " + error);
+                });
+            }
+
+            document.addEventListener("deviceready", onDeviceReady, true);
+            
+
+        </script>
+
+        <button onclick="recognizeSpeech();">Start recognition</button>
+        <button onclick="getSupportedLanguages();">Get Supported Languages</button>
+    </body>
+</html>
